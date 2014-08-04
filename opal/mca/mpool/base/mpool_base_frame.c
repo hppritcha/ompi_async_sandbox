@@ -19,12 +19,10 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h> 
 #endif  /* HAVE_UNISTD_H */
-#ifdef HAVE_MALLOC_H
-#include <malloc.h>
-#endif
 
 #include "opal_config.h"
 
