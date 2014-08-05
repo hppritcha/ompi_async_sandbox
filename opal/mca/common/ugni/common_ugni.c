@@ -136,6 +136,8 @@ static int opal_common_ugni_device_init (opal_common_ugni_device_t *device,
 
     OPAL_OUTPUT((-1, "Got NIC Addr: 0x%08x, CPU ID: %d", device->dev_addr, device->dev_id));
 
+    OBJ_CONSTRUCT(&device->dev_lock,opal_mutex_t);
+
     /* Attach device to the communication domain */
     rc = GNI_CdmAttach (opal_common_ugni_module.cd_handle, device->dev_id,
                         &device->dev_pe_addr, &device->dev_handle);

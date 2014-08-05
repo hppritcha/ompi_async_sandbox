@@ -32,7 +32,9 @@ int mca_btl_ugni_send (struct mca_btl_base_module_t *btl,
     rc = mca_btl_ugni_check_endpoint_state (endpoint);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         frag->base.des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
+        OPAL_THREAD_LOCK(&endpoint->lock);
         opal_list_append (&endpoint->frag_wait_list, (opal_list_item_t *) frag);
+        OPAL_THREAD_UNLOCK(&endpoint->lock);
         return OPAL_SUCCESS;
     }
 
@@ -71,11 +73,15 @@ int mca_btl_ugni_send (struct mca_btl_base_module_t *btl,
     if (OPAL_UNLIKELY(OPAL_ERR_OUT_OF_RESOURCE == rc)) {
         /* queue up request */
         if (false == endpoint->wait_listed) {
+            OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
             opal_list_append (&ugni_module->ep_wait_list, &endpoint->super);
+            OPAL_THREAD_UNLOCK(&ugni_module->ep_wait_list_lock);
             endpoint->wait_listed = true;
         }
 
+        OPAL_THREAD_LOCK(&endpoint->lock);
         opal_list_append (&endpoint->frag_wait_list, (opal_list_item_t *) frag);
+        OPAL_THREAD_UNLOCK(&endpoint->lock);
         rc = OPAL_SUCCESS;
     }
 

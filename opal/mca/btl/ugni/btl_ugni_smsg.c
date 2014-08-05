@@ -70,7 +70,9 @@ int mca_btl_ugni_smsg_process (mca_btl_base_endpoint_t *ep)
     do {
         uint8_t tag = GNI_SMSG_ANY_TAG;
 
+        OPAL_THREAD_LOCK(&ep->common->dev->dev_lock);
         rc = GNI_SmsgGetNextWTag (ep->smsg_ep_handle, (void **) &data_ptr, &tag);
+        OPAL_THREAD_UNLOCK(&ep->common->dev->dev_lock);
         if (GNI_RC_NOT_DONE == rc) {
             BTL_VERBOSE(("no smsg message waiting. rc = %d", rc));
 
@@ -140,7 +142,9 @@ int mca_btl_ugni_smsg_process (mca_btl_base_endpoint_t *ep)
             break;
         }
 
+        OPAL_THREAD_LOCK(&ep->common->dev->dev_lock);
         rc = GNI_SmsgRelease (ep->smsg_ep_handle);
+        OPAL_THREAD_UNLOCK(&ep->common->dev->dev_lock);
         if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc)) {
             BTL_ERROR(("Smsg release failed! rc = %d", rc));
             return OPAL_ERROR;
@@ -175,7 +179,9 @@ mca_btl_ugni_handle_remote_smsg_overrun (mca_btl_ugni_module_t *btl)
 
     /* clear out remote cq */
     do {
+        OPAL_THREAD_LOCK(&btl->device->dev_lock);
         rc = GNI_CqGetEvent (btl->smsg_remote_cq, &event_data);
+        OPAL_THREAD_UNLOCK(&btl->device->dev_lock);
     } while (GNI_RC_NOT_DONE != rc);
 
     endpoint_count = opal_pointer_array_get_size (&btl->endpoints);
@@ -207,7 +213,9 @@ int mca_btl_ugni_progress_remote_smsg (mca_btl_ugni_module_t *btl)
     gni_return_t grc;
     uint64_t inst_id;
 
+    OPAL_THREAD_LOCK(&btl->device->dev_lock);
     grc = GNI_CqGetEvent (btl->smsg_remote_cq, &event_data);
+    OPAL_THREAD_UNLOCK(&btl->device->dev_lock);
     if (GNI_RC_NOT_DONE == grc) {
         return 0;
     }

@@ -67,6 +67,8 @@ typedef struct mca_btl_ugni_module_t {
     opal_pointer_array_t endpoints;
     opal_hash_table_t id_to_endpoint;
 
+    /* lock for this list */
+    opal_mutex_t     failed_frags_lock;   
     opal_list_t failed_frags;
 
     mca_mpool_base_module_t *smsg_mpool;
@@ -90,6 +92,9 @@ typedef struct mca_btl_ugni_module_t {
     ompi_free_list_t rdma_frags;
     ompi_free_list_t rdma_int_frags;
 
+
+    /* lock for this list */
+    opal_mutex_t     ep_wait_list_lock;
     /* endpoints waiting on credits */
     opal_list_t      ep_wait_list;
 
@@ -97,13 +102,13 @@ typedef struct mca_btl_ugni_module_t {
     opal_pointer_array_t pending_smsg_frags_bb;
 
     uint32_t reg_max;
-    uint32_t reg_count;
+    volatile uint32_t reg_count;
 
     /* used to calculate the fraction of registered memory resources
      * this rank should be limited too */
     int nlocal_procs;
 
-    int active_send_count;
+    volatile int active_send_count;
 } mca_btl_ugni_module_t;
 
 typedef struct mca_btl_ugni_component_t {

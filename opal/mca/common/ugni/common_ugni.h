@@ -46,8 +46,9 @@ struct opal_common_ugni_device_t {
     uint32_t         dev_addr;
     uint32_t         dev_cpu_id;
 
-    size_t                      dev_ep_count;
-    void *btl_ctx;
+    size_t           dev_ep_count;
+    opal_mutex_t     dev_lock;
+    void             *btl_ctx;
 };
 typedef struct opal_common_ugni_device_t opal_common_ugni_device_t;
 

@@ -55,7 +55,7 @@ btl_ugni_component_register(void)
     int rc;
 
     (void) mca_base_var_group_component_register(&mca_btl_ugni_component.super.btl_version,
-                                                 "Gemini byte transport layer");
+                                                 "uGNI byte transport layer");
 
     mca_btl_ugni_component.ugni_free_list_num = 8;
     (void) mca_base_component_var_register(&mca_btl_ugni_component.super.btl_version,
@@ -285,12 +285,14 @@ mca_btl_ugni_component_init (int *num_btl_modules,
     unsigned int i;
     int rc;
 
+#if 0
     /* Currently refuse to run if MPI_THREAD_MULTIPLE is enabled */
     if (ompi_mpi_thread_multiple && !mca_btl_base_thread_multiple_override) {
         opal_output_verbose(5, opal_btl_base_framework.framework_output,
                             "btl:ugni: MPI_THREAD_MULTIPLE not supported; skipping this component");
         return NULL;
     }
+#endif
 
     if (16384 < mca_btl_ugni_component.ugni_smsg_limit) {
         mca_btl_ugni_component.ugni_smsg_limit = 16384;
@@ -365,7 +367,9 @@ mca_btl_ugni_progress_datagram (mca_btl_ugni_module_t *ugni_module)
     int count = 0, rc;
 
     /* check for datagram completion */
+    OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);  /* TODO: may not need lock for this function */
     grc = GNI_PostDataProbeById (ugni_module->device->dev_handle, &datagram_id);
+    OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);  
     if (OPAL_LIKELY(GNI_RC_SUCCESS != grc)) {
         return 0;
     }
@@ -382,8 +386,10 @@ mca_btl_ugni_progress_datagram (mca_btl_ugni_module_t *ugni_module)
     }
 
     /* wait for the incoming datagram to complete (in case it isn't) */
+    OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);  /* TODO: may not need lock for this function */
     grc = GNI_EpPostDataWaitById (handle, datagram_id, -1, &post_state,
                                   &remote_addr, &remote_id);
+    OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);  
     if (GNI_RC_SUCCESS != grc) {
         BTL_ERROR(("GNI_EpPostDataWaitById failed with rc = %d", grc));
         return opal_common_rc_ugni_to_opal (grc);
@@ -437,7 +443,9 @@ mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module)
     uint32_t recoverable = 1;
     gni_return_t rc;
 
+    OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);
     rc = GNI_CqGetEvent (ugni_module->rdma_local_cq, &event_data);
+    OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
     if (GNI_RC_NOT_DONE == rc) {
         return 0;
     }
@@ -450,7 +458,9 @@ mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module)
         return opal_common_rc_ugni_to_opal (rc);
     }
 
+    OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);
     rc = GNI_GetCompleted (ugni_module->rdma_local_cq, event_data, (gni_post_descriptor_t **) &desc);
+    OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
     if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc && GNI_RC_TRANSACTION_ERROR != rc)) {
         BTL_ERROR(("Error in GNI_GetComplete %s", gni_err_str[rc]));
         return opal_common_rc_ugni_to_opal (rc);
@@ -490,8 +500,10 @@ mca_btl_ugni_retry_failed (mca_btl_ugni_module_t *ugni_module)
     int i;
 
     for (i = 0 ; i < count ; ++i) {
+        OPAL_THREAD_LOCK(&ugni_module->failed_frags_lock);
         mca_btl_ugni_base_frag_t *frag =
             (mca_btl_ugni_base_frag_t *) opal_list_remove_first (&ugni_module->failed_frags);
+        OPAL_THREAD_UNLOCK(&ugni_module->failed_frags_lock);
         assert (NULL != frag);
 
         frag->cbfunc (frag, OPAL_SUCCESS);
@@ -503,24 +515,32 @@ mca_btl_ugni_retry_failed (mca_btl_ugni_module_t *ugni_module)
 static inline int
 mca_btl_ugni_progress_wait_list (mca_btl_ugni_module_t *ugni_module)
 {
-    int count = opal_list_get_size (&ugni_module->ep_wait_list);
-    int rc, i;
+    int rc = OPAL_SUCCESS;
+    int i;
+    mca_btl_base_endpoint_t *endpoint = NULL;
 
-    for (i = 0 ; i < count ; ++i) {
-        mca_btl_base_endpoint_t *endpoint =
-            (mca_btl_base_endpoint_t *) opal_list_remove_first (&ugni_module->ep_wait_list);
-        assert (NULL != endpoint);
+    do {
+        OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
+        endpoint = (mca_btl_base_endpoint_t *) opal_list_remove_first (&ugni_module->ep_wait_list);
+        OPAL_THREAD_UNLOCK(&ugni_module->ep_wait_list_lock);
+        if (endpoint != NULL) {
 
-        endpoint->wait_listed = false;
+            endpoint->wait_listed = false;
 
-        rc = mca_btl_ugni_progress_send_wait_list (endpoint);
-        if (OPAL_SUCCESS != rc && false == endpoint->wait_listed) {
-            opal_list_append (&ugni_module->ep_wait_list, &endpoint->super);
-            endpoint->wait_listed = true;
+            rc = mca_btl_ugni_progress_send_wait_list (endpoint);
+
+            if (OMPI_SUCCESS != rc && false == endpoint->wait_listed) {
+
+                OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
+                opal_list_append (&ugni_module->ep_wait_list, &endpoint->super);
+                OPAL_THREAD_UNLOCK(&ugni_module->ep_wait_list_lock);
+                endpoint->wait_listed = true;
+            }
         }
-    }
 
-    return count;
+    } while (endpoint != NULL);
+
+    return rc;
 }
 
 static int mca_btl_ugni_component_progress (void)
