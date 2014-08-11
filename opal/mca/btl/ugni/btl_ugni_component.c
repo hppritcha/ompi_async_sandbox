@@ -530,7 +530,7 @@ mca_btl_ugni_progress_wait_list (mca_btl_ugni_module_t *ugni_module)
 
             rc = mca_btl_ugni_progress_send_wait_list (endpoint);
 
-            if (OMPI_SUCCESS != rc && false == endpoint->wait_listed) {
+            if (OPAL_SUCCESS != rc && false == endpoint->wait_listed) {
 
                 OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
                 opal_list_append (&ugni_module->ep_wait_list, &endpoint->super);
