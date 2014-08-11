@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2014      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -64,8 +66,8 @@ static int spml_ikrit_get_ep_address(spml_ikrit_mxm_ep_conn_info_t *ep_info,
                          (struct sockaddr *) &ep_info->addr.ptl_addr[ptlid],
                          &addrlen);
     if (MXM_OK != err) {
-        orte_show_help("help-spml-ikrit.txt",
-                       "unable to extract endpoint address",
+        orte_show_help("help-oshmem-spml-ikrit.txt",
+                       "unable to get endpoint address",
                        true,
                        mxm_error_string(err));
         return OSHMEM_ERROR;
@@ -504,8 +506,8 @@ int mca_spml_ikrit_add_procs(oshmem_proc_t** procs, size_t nprocs)
     proc_self = oshmem_proc_group_find(oshmem_group_all, my_rank);
     /* identify local processes and change transport to SHM */
     for (i = 0; i < nprocs; i++) {
-        if (procs[i]->proc_name.jobid != proc_self->proc_name.jobid||
-        !OPAL_PROC_ON_LOCAL_NODE(procs[i]->proc_flags)) {
+        if (opal_process_name_jobid(procs[i]->super.proc_name) != opal_process_name_jobid(proc_self->super.proc_name) ||
+        !OPAL_PROC_ON_LOCAL_NODE(procs[i]->super.proc_flags)) {
             continue;
         }
         if (procs[i] == proc_self)
@@ -611,7 +613,7 @@ sshmem_mkey_t *mca_spml_ikrit_register(void* addr,
         }
         SPML_VERBOSE(5,
                      "rank %d ptl %d addr %p size %llu %s",
-                     oshmem_proc_local_proc->proc_name.vpid, i, addr, (unsigned long long)size,
+                     opal_process_name_vpid(oshmem_proc_local_proc->super.proc_name), i, addr, (unsigned long long)size,
                      mca_spml_base_mkey2str(&mkeys[i]));
 
     }
