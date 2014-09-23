@@ -18,7 +18,7 @@ angskun       Thara Angskun               UTK
 Anya          Anya Tatashina              Sun
 apant         Avneesh Pant                QLogic
 artpol        Artem Polyakov              Individual
-bbenton       Brad Benton                 IBM
+bbenton       Brad Benton                 IBM, AMD
 bosilca       George Bosilca              UTK
 bouteill      Aurelien Bouteiller         UTK
 brbarret      Brian Barrett               IU, LANL, SNL
@@ -72,6 +72,7 @@ lums          Andrew Lumsdaine            IU
 manjugv       Manjunath Gorentla Venkata  ORNL
 matney        Ken Matney                  ORNL
 miked         Mike Dubman                 Mellanox
+mjbhaskar     Mangala Jyothi Bhaskar      UH
 alinas        Alina Sklarevich            Mellanox
 devendar      Devendar Bureddy            Mellanox
 mitch         Mitch Sukalski              SNL
@@ -114,6 +115,7 @@ twoodall      Tim Woodall                 LANL
 vasily        Vasily Filipov              Mellanox
 vsahay        Vishal Sahay                IU
 vvenkatesan   Vishwanath Venkatesan       UH
+vvenkates     Vishwanath Venkatesan       Intel
 wbland        Wesley Bland                UTK
 yaeld         Yael Dalen                  Mellanox
 yosefe        Yossi Etigin                Mellanox
@@ -122,6 +124,7 @@ yuw           Weikuan Yu                  LANL, OSU
 Affiliation abbreviations:
 --------------------------
 
+AMD = Advanced Micro Devices, Inc.
 Chelsio = Chelsio Communications, Inc.
 Cisco = Cisco Systems, Inc.
 HE = Hochschule Esslingen

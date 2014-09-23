@@ -13,8 +13,6 @@
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -135,121 +133,6 @@ int orte_ess_base_app_setup(bool db_restrict_local)
         goto error;
     }
 
-    /* Setup the communication infrastructure */
-    /*
-     * OOB Layer
-     */
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_oob_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_oob_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = orte_oob_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_oob_base_select";
-        goto error;
-    }
-    
-    /* Runtime Messaging Layer */
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_rml_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_rml_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = orte_rml_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_rml_base_select";
-        goto error;
-    }
-    
-    /* setup the errmgr */
-    if (ORTE_SUCCESS != (ret = orte_errmgr_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_errmgr_base_select";
-        goto error;
-    }
-
-    /* Routed system */
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_routed_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_routed_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = orte_routed_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_routed_base_select";
-        goto error;
-    }
-    
-    /* data store */
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&opal_dstore_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "opal_dstore_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = opal_dstore_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_dstore_base_select";
-        goto error;
-    }
-    /* create the handles */
-    if (0 > (opal_dstore_peer = opal_dstore.open("PEER"))) {
-        error = "opal dstore global";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-    if (0 > (opal_dstore_internal = opal_dstore.open("INTERNAL"))) {
-        error = "opal dstore internal";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-    if (0 > (opal_dstore_nonpeer = opal_dstore.open("NONPEER"))) {
-        error = "opal dstore nonpeer";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-
-    /*
-     * Group communications
-     */
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_grpcomm_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_grpcomm_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = orte_grpcomm_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_grpcomm_base_select";
-        goto error;
-    }
-    
-    /* non-daemon/HNP apps can only have the default proxy PLM
-     * module open - provide a chance for it to initialize
-     */
-    if (ORTE_SUCCESS != (ret = orte_plm.init())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_plm_init";
-        goto error;
-    }
-    
-    /* construct the thread object */
-    OBJ_CONSTRUCT(&orte_progress_thread, opal_thread_t);
-    /* fork off a thread to progress it */
-    orte_progress_thread.t_run = orte_progress_thread_engine;
-    progress_thread_running = true;
-    if (OPAL_SUCCESS != (ret = opal_thread_start(&orte_progress_thread))) {
-        error = "orte progress thread start";
-        progress_thread_running = false;
-        goto error;
-    }
-
-    /* enable communication via the rml */
-    if (ORTE_SUCCESS != (ret = orte_rml.enable_comm())) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_rml.enable_comm";
-        goto error;
-    }
-    
     /* setup my session directory */
     if (orte_create_session_dirs) {
         OPAL_OUTPUT_VERBOSE((2, orte_ess_base_framework.framework_output,
@@ -302,6 +185,93 @@ int orte_ess_base_app_setup(bool db_restrict_local)
         OBJ_DESTRUCT(&kv);
     }
 
+    /* Setup the communication infrastructure */
+    /*
+     * OOB Layer
+     */
+    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_oob_base_framework, 0))) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_oob_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = orte_oob_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_oob_base_select";
+        goto error;
+    }
+    
+    /* Runtime Messaging Layer */
+    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_rml_base_framework, 0))) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_rml_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = orte_rml_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_rml_base_select";
+        goto error;
+    }
+    
+    /* setup the errmgr */
+    if (ORTE_SUCCESS != (ret = orte_errmgr_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_errmgr_base_select";
+        goto error;
+    }
+
+    /* Routed system */
+    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_routed_base_framework, 0))) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_routed_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = orte_routed_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_routed_base_select";
+        goto error;
+    }
+    
+    /*
+     * Group communications
+     */
+    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_grpcomm_base_framework, 0))) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_grpcomm_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = orte_grpcomm_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_grpcomm_base_select";
+        goto error;
+    }
+    
+    /* non-daemon/HNP apps can only have the default proxy PLM
+     * module open - provide a chance for it to initialize
+     */
+    if (ORTE_SUCCESS != (ret = orte_plm.init())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_plm_init";
+        goto error;
+    }
+    
+    /* construct the thread object */
+    OBJ_CONSTRUCT(&orte_progress_thread, opal_thread_t);
+    /* fork off a thread to progress it */
+    orte_progress_thread.t_run = orte_progress_thread_engine;
+    progress_thread_running = true;
+    if (OPAL_SUCCESS != (ret = opal_thread_start(&orte_progress_thread))) {
+        error = "orte progress thread start";
+        progress_thread_running = false;
+        goto error;
+    }
+
+    /* enable communication via the rml */
+    if (ORTE_SUCCESS != (ret = orte_rml.enable_comm())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_rml.enable_comm";
+        goto error;
+    }
+    
     /* setup the routed info  */
     if (ORTE_SUCCESS != (ret = orte_routed.init_routes(ORTE_PROC_MY_NAME->jobid, NULL))) {
         ORTE_ERROR_LOG(ret);
@@ -471,11 +441,7 @@ void orte_ess_base_app_abort(int status, bool report)
     if (report && orte_routing_is_enabled && orte_create_session_dirs) {
         myfile = opal_os_path(false, orte_process_info.proc_session_dir, "aborted", NULL);
         fd = open(myfile, O_CREAT, S_IRUSR);
-        /* FIXME if file creation fails, it is likely orte_process_info.proc_session_dir
-         * has been previously deleted */
-        if (fd >= 0) {
-            close(fd);
-        }
+        close(fd);
         /* now introduce a short delay to allow any pending
          * messages (e.g., from a call to "show_help") to
          * have a chance to be sent */

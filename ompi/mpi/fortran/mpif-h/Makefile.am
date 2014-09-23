@@ -21,6 +21,8 @@
 # $HEADER$
 #
 
+include $(top_srcdir)/Makefile.ompi-rules
+
 SUBDIRS = profile
 
 #
@@ -50,6 +52,7 @@ AM_CPPFLAGS = -DOMPI_PROFILE_LAYER=0 -DOMPI_COMPILING_FORTRAN_WRAPPERS=1
 #
 
 lib_LTLIBRARIES =
+CLEANFILES =
 libmpi_mpifh_la_LIBADD = $(top_builddir)/ompi/libmpi.la $(OMPI_MPIEXT_MPIFH_LIBS)
 libmpi_mpifh_la_LDFLAGS = -version-info $(libmpi_mpifh_so_version)
 
@@ -74,6 +77,22 @@ headers = \
 # These files are only built and added to libmpi_mpifh.la in certain cases.
 #
 libmpi_mpifh_la_SOURCES =
+
+# sizeof_f.f90 is generated based on some results from configure tests.
+CLEANFILES += sizeof_f.f90
+
+nodist_libmpi_mpifh_la_SOURCES =
+if BUILD_FORTRAN_SIZEOF
+nodist_libmpi_mpifh_la_SOURCES += sizeof_f.f90
+endif
+sizeof_pl=$(top_srcdir)/ompi/mpi/fortran/base/gen-mpi-sizeof.pl
+sizeof_f.f90: $(top_builddir)/config.status
+sizeof_f.f90: $(sizeof_pl)
+sizeof_f.f90:
+	$(OMPI_V_GEN) $(sizeof_pl) \
+	    --impl=$@ --ierror=mandatory --mpi \
+	    --maxrank=$(OMPI_FORTRAN_MAX_ARRAY_RANK) \
+	    --generate=$(OMPI_FORTRAN_BUILD_SIZEOF)
 
 if BUILD_MPI_FORTRAN_MPIFH_BINDINGS_LAYER
 libmpi_mpifh_la_SOURCES += \
@@ -358,14 +377,17 @@ libmpi_mpifh_la_SOURCES += \
         win_get_group_f.c \
         win_get_name_f.c \
         win_lock_f.c \
+        win_lock_all_f.c \
         win_post_f.c \
         win_set_attr_f.c \
         win_set_errhandler_f.c \
         win_set_name_f.c \
         win_shared_query_f.c \
         win_start_f.c \
+        win_sync_f.c \
         win_test_f.c \
         win_unlock_f.c \
+        win_unlock_all_f.c \
         win_wait_f.c \
         win_flush_f.c \
         win_flush_all_f.c \

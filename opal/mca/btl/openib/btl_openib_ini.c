@@ -14,6 +14,8 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2014      Intel, Inc. All rights reserved
+ * Copyright (c) 2014      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -96,7 +98,6 @@ static int parse_line(parsed_section_values_t *item);
 static void reset_section(bool had_previous_value, parsed_section_values_t *s);
 static void reset_values(opal_btl_openib_ini_values_t *v);
 static int save_section(parsed_section_values_t *s);
-static inline void show_help(const char *topic);
 
 
 /*
@@ -601,7 +602,7 @@ static int save_section(parsed_section_values_t *s)
                    here instead. */
                 memcpy(&h->values, &s->values, sizeof(s->values));
                 /* Need to strdup the string, though */
-                if (NULL != h->values.receive_queues) {
+                if (NULL != s->values.receive_queues) {
                     h->values.receive_queues = strdup(s->values.receive_queues);
                 }
                 opal_list_append(&devices, &h->super);
@@ -690,19 +691,4 @@ int opal_btl_openib_ini_intify_list(char *value, uint32_t **values, int *len)
     }
 
     return OPAL_SUCCESS;
-}
-
-/*
- * Trival helper function -don't use this, it confuses check-help-strings.pl tool
- */
-static inline void show_help(const char *topic)
-{
-    char *save = btl_openib_ini_yytext;
-    if (0 == strcmp("\n", btl_openib_ini_yytext)) {
-        btl_openib_ini_yytext = "<end of line>";
-    }
-    opal_show_help("help-mpi-btl-openib.txt", topic, true,
-                   ini_filename, btl_openib_ini_yynewlines,
-                   btl_openib_ini_yytext);
-    btl_openib_ini_yytext = save;
 }

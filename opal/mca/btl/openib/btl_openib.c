@@ -620,6 +620,7 @@ static uint64_t calculate_total_mem (void)
 #endif
 }
 
+
 static uint64_t calculate_max_reg (void) 
 {
     struct stat statinfo;
@@ -630,25 +631,36 @@ static uint64_t calculate_max_reg (void)
 
     mem_total = calculate_total_mem ();
 
-    if (0 == stat("/sys/module/mlx5_core", &statinfo)) {
-        /* mlx5 means that we have ofed 2.0 and it can always register 2xmem_total for any mlx hca */
-        max_reg = 2 * mem_total;
-    }
-    else if (0 == stat("/sys/module/mlx4_core/parameters", &statinfo)) {
+    if (0 == stat("/sys/module/mlx4_core/parameters/log_num_mtt", &statinfo)) {
         mtts_per_seg = 1 << read_module_param("/sys/module/mlx4_core/parameters/log_mtts_per_seg", 1);
         num_mtt = 1 << read_module_param("/sys/module/mlx4_core/parameters/log_num_mtt", 20);
         if (1 == num_mtt) {
-            /* NTH: is 19 a minimum? when log_num_mtt is set to 0 use 19 */
-            num_mtt = 1 << 20;
+            if (0  == stat("/sys/module/mlx5_core", &statinfo)) {
+                max_reg = 2 * mem_total;
+            } else {
+                /* NTH: is 19 a minimum? when log_num_mtt is set to 0 use 19 */
+                num_mtt = 1 << 19;
+                max_reg = (num_mtt - reserved_mtt) * opal_getpagesize () * mtts_per_seg;
+            }
+        } else  {
+            max_reg = (num_mtt - reserved_mtt) * opal_getpagesize () * mtts_per_seg;
         }
 
-        max_reg = (num_mtt - reserved_mtt) * opal_getpagesize () * mtts_per_seg;
-    } else if (0 == stat("/sys/module/ib_mthca/parameters", &statinfo)) {
+    } else if (0 == stat("/sys/module/ib_mthca/parameters/num_mtt", &statinfo)) {
         mtts_per_seg = 1 << read_module_param("/sys/module/ib_mthca/parameters/log_mtts_per_seg", 1);
         num_mtt = read_module_param("/sys/module/ib_mthca/parameters/num_mtt", 1 << 20);
         reserved_mtt = read_module_param("/sys/module/ib_mthca/parameters/fmr_reserved_mtts", 0);
 
         max_reg = (num_mtt - reserved_mtt) * opal_getpagesize () * mtts_per_seg;
+
+    } else if (
+            (0 == stat("/sys/module/mlx5_core", &statinfo)) ||
+            (0 == stat("/sys/module/mlx4_core/parameters", &statinfo)) ||
+            (0 == stat("/sys/module/ib_mthca/parameters", &statinfo))
+            ) {
+        /* mlx5 means that we have ofed 2.0 and it can always register 2xmem_total for any mlx hca */
+        max_reg = 2 * mem_total;
+
     } else {
         /* Need to update to determine the registration limit for this
            configuration */
@@ -967,7 +979,10 @@ int mca_btl_openib_add_procs(
 #endif
 
         if(NULL == (ib_proc = mca_btl_openib_proc_create(proc))) {
-            return OPAL_ERR_OUT_OF_RESOURCE;
+            /* if we don't have connection info for this process, it's
+             * okay because some other method might be able to reach it,
+             * so just mark it as unreachable by us */
+            continue;
         }
 
         /* check if the remote proc has any ports that:

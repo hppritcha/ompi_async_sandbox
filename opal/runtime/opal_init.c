@@ -235,6 +235,12 @@ opal_err2str(int errnum, const char **errmsg)
     case OPAL_ERR_AUTHENTICATION_FAILED:
         retval = "Authentication failed";
         break;
+    case OPAL_ERR_COMM_FAILURE:
+        retval = "Comm failure";
+        break;
+    case OPAL_ERR_SERVER_NOT_AVAIL:
+        retval = "Server not available";
+        break;
     default:
         retval = NULL;
     }
@@ -579,8 +585,8 @@ int opal_init_test(void)
         goto return_error;
     }
 
-    if (OPAL_SUCCESS != (ret = mca_base_framework_register(&opal_event_base_framework, 0))) {
-        error = "opal_event_register";
+    if (OPAL_SUCCESS != (ret = mca_base_framework_open(&opal_event_base_framework, 0))) {
+        error = "opal_event_base_open";
         goto return_error;
     }
 
@@ -616,5 +622,3 @@ void opal_warn_fork(void)
     }
 #endif
 }
-
-

@@ -379,7 +379,6 @@ static void proc_errors(int fd, short args, void *cbdata)
      */
     if (pptr->state < ORTE_PROC_STATE_TERMINATED) {
         pptr->state = state;
-        jdata->num_terminated++;
     }
 
     /* if we were ordered to terminate, mark this proc as dead and see if
@@ -518,9 +517,9 @@ static void proc_errors(int fd, short args, void *cbdata)
 
     case ORTE_PROC_STATE_CALLED_ABORT:
         OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base_framework.framework_output,
-                             "%s errmgr:hnp: proc %s called abort",
+                             "%s errmgr:hnp: proc %s called abort with exit code %d",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ORTE_NAME_PRINT(proc)));
+                             ORTE_NAME_PRINT(proc), pptr->exit_code));
         if (!ORTE_FLAG_TEST(jdata, ORTE_JOB_FLAG_ABORTED)) {
             jdata->state = ORTE_JOB_STATE_CALLED_ABORT;
             /* point to the first proc to cause the problem */
@@ -603,7 +602,7 @@ static void proc_errors(int fd, short args, void *cbdata)
             break;
         }
         if (!ORTE_FLAG_TEST(jdata, ORTE_JOB_FLAG_ABORTED)) {
-             /* abnormal termination - abort, but only do it once
+            /* abnormal termination - abort, but only do it once
              * to avoid creating a lot of confusion */
             default_hnp_abort(jdata);
         }
@@ -620,6 +619,10 @@ static void proc_errors(int fd, short args, void *cbdata)
             ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_TERMINATED);
         }
         break;
+    }
+    /* if the waitpid fired, be sure to let the state machine know */
+    if (ORTE_FLAG_TEST(pptr, ORTE_PROC_FLAG_WAITPID)) {
+        ORTE_ACTIVATE_PROC_STATE(&pptr->name, ORTE_PROC_STATE_WAITPID_FIRED);
     }
 
  cleanup:

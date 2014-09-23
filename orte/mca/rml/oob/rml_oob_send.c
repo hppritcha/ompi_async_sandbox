@@ -108,6 +108,7 @@ static void send_msg(int fd, short args, void *cbdata)
                          "%s rml_send_msg to peer %s at tag %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_NAME_PRINT(peer), tag));
+    OPAL_TIMING_EVENT((&tm_rml, "to %s", ORTE_NAME_PRINT(peer)));
 
     /* if this is a message to myself, then just post the message
      * for receipt - no need to dive into the oob
@@ -160,15 +161,17 @@ static void send_msg(int fd, short args, void *cbdata)
                 bytes += req->post.iov[i].iov_len;
             }
             /* get the required memory allocation */
-            rcv->iov.iov_base = (IOVBASE_TYPE*)malloc(bytes);
-            rcv->iov.iov_len = bytes;
-            /* transfer the bytes */
-            ptr =  (char*)rcv->iov.iov_base;
-            for (i = 0 ; i < req->post.count ; ++i) {
-                memcpy(ptr, req->post.iov[i].iov_base, req->post.iov[i].iov_len);
-                ptr += req->post.iov[i].iov_len;
+            if (0 < bytes) {
+                rcv->iov.iov_base = (IOVBASE_TYPE*)malloc(bytes);
+                rcv->iov.iov_len = bytes;
+                /* transfer the bytes */
+                ptr =  (char*)rcv->iov.iov_base;
+                for (i = 0 ; i < req->post.count ; ++i) {
+                    memcpy(ptr, req->post.iov[i].iov_base, req->post.iov[i].iov_len);
+                    ptr += req->post.iov[i].iov_len;
+                }
             }
-        } else {
+        } else if (0 < req->post.buffer->bytes_used) {
             rcv->iov.iov_base = (IOVBASE_TYPE*)malloc(req->post.buffer->bytes_used);
             memcpy(rcv->iov.iov_base, req->post.buffer->base_ptr, req->post.buffer->bytes_used);
             rcv->iov.iov_len = req->post.buffer->bytes_used;

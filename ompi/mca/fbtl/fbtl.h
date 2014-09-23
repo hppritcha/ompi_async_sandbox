@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008-2011 University of Houston. All rights reserved.
+ * Copyright (c) 2008-2014 University of Houston. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -32,6 +32,7 @@
 BEGIN_C_DECLS
 
 struct mca_io_ompio_file_t;
+struct mca_ompio_request_t;
 
 /*
  * Macro for use in components that are of type coll
@@ -115,20 +116,18 @@ typedef int (*mca_fbtl_base_module_finalize_1_0_0_fn_t)
     (struct mca_io_ompio_file_t *file);
 
 
-typedef size_t (*mca_fbtl_base_module_preadv_fn_t)
+typedef ssize_t (*mca_fbtl_base_module_preadv_fn_t)
+    (struct mca_io_ompio_file_t *file );
+typedef ssize_t (*mca_fbtl_base_module_pwritev_fn_t)
+    (struct mca_io_ompio_file_t *file );
+typedef ssize_t (*mca_fbtl_base_module_ipreadv_fn_t)
     (struct mca_io_ompio_file_t *file,
-     int *sorted);
-typedef size_t (*mca_fbtl_base_module_pwritev_fn_t)
-    (struct mca_io_ompio_file_t *file,
-     int *sorted);
-typedef size_t (*mca_fbtl_base_module_ipreadv_fn_t)
-    (struct mca_io_ompio_file_t *file,
-     int *sorted,
      ompi_request_t **request);
-typedef size_t (*mca_fbtl_base_module_ipwritev_fn_t)
+typedef ssize_t (*mca_fbtl_base_module_ipwritev_fn_t)
     (struct mca_io_ompio_file_t *file,
-     int *sorted,
      ompi_request_t **request);
+typedef bool (*mca_fbtl_base_module_progress_fn_t)
+    ( struct mca_ompio_request_t *request);
 
 /*
  * ***********************************************************************
@@ -149,11 +148,7 @@ struct mca_fbtl_base_module_1_0_0_t {
     mca_fbtl_base_module_ipreadv_fn_t    fbtl_ipreadv;
     mca_fbtl_base_module_pwritev_fn_t    fbtl_pwritev;
     mca_fbtl_base_module_ipwritev_fn_t   fbtl_ipwritev;
-    /*
-    mca_fbtl_base_module_test_fn_t       fbtl_test;
-    mca_fbtl_base_module_wait_fn_t       fbtl_wait;
     mca_fbtl_base_module_progress_fn_t   fbtl_progress;
-    */
 };
 typedef struct mca_fbtl_base_module_1_0_0_t mca_fbtl_base_module_1_0_0_t;
 typedef mca_fbtl_base_module_1_0_0_t mca_fbtl_base_module_t;

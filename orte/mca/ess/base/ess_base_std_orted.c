@@ -75,6 +75,7 @@
 #include "orte/runtime/orte_wait.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_quit.h"
+#include "orte/orted/pmix/pmix_server.h"
 
 #include "orte/mca/ess/base/base.h"
 
@@ -237,6 +238,84 @@ int orte_ess_base_orted_setup(char **hosts)
         }
     }
     
+    /* setup my session directory here as the OOB may need it */
+    if (orte_create_session_dirs) {
+        OPAL_OUTPUT_VERBOSE((2, orte_ess_base_framework.framework_output,
+                             "%s setting up session dir with\n\ttmpdir: %s\n\thost %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             (NULL == orte_process_info.tmpdir_base) ? "UNDEF" : orte_process_info.tmpdir_base,
+                             orte_process_info.nodename));
+        
+        /* take a pass thru the session directory code to fillin the
+         * tmpdir names - don't create anything yet
+         */
+        if (ORTE_SUCCESS != (ret = orte_session_dir(false,
+                                                    orte_process_info.tmpdir_base,
+                                                    orte_process_info.nodename, NULL,
+                                                    ORTE_PROC_MY_NAME))) {
+            ORTE_ERROR_LOG(ret);
+            error = "orte_session_dir define";
+            goto error;
+        }
+        /* clear the session directory just in case there are
+         * stale directories laying around
+         */
+        orte_session_dir_cleanup(ORTE_JOBID_WILDCARD);
+
+        /* now actually create the directory tree */
+        if (ORTE_SUCCESS != (ret = orte_session_dir(true,
+                                                    orte_process_info.tmpdir_base,
+                                                    orte_process_info.nodename, NULL,
+                                                    ORTE_PROC_MY_NAME))) {
+            ORTE_ERROR_LOG(ret);
+            error = "orte_session_dir";
+            goto error;
+        }
+
+        /* set the opal_output env file location to be in the
+         * proc-specific session directory. */
+        opal_output_set_output_file_info(orte_process_info.proc_session_dir,
+                                         "output-", NULL, NULL);
+        
+        /* setup stdout/stderr */
+        if (orte_debug_daemons_file_flag) {
+            /* if we are debugging to a file, then send stdout/stderr to
+             * the orted log file
+             */
+            
+            /* get my jobid */
+            if (ORTE_SUCCESS != (ret = orte_util_convert_jobid_to_string(&jobidstring,
+                                                                         ORTE_PROC_MY_NAME->jobid))) {
+                ORTE_ERROR_LOG(ret);
+                error = "convert_jobid";
+                goto error;
+            }
+            
+            /* define a log file name in the session directory */
+            snprintf(log_file, PATH_MAX, "output-orted-%s-%s.log",
+                     jobidstring, orte_process_info.nodename);
+            log_path = opal_os_path(false,
+                                    orte_process_info.tmpdir_base,
+                                    orte_process_info.top_session_dir,
+                                    log_file,
+                                    NULL);
+            
+            fd = open(log_path, O_RDWR|O_CREAT|O_TRUNC, 0640);
+            if (fd < 0) {
+                /* couldn't open the file for some reason, so
+                 * just connect everything to /dev/null
+                 */
+                fd = open("/dev/null", O_RDWR|O_CREAT|O_TRUNC, 0666);
+            } else {
+                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDERR_FILENO);
+                if(fd != STDOUT_FILENO && fd != STDERR_FILENO) {
+                    close(fd);
+                }
+            }
+        }
+    }
+
     /* Setup the communication infrastructure */
         if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_oob_base_framework, 0))) {
         ORTE_ERROR_LOG(ret);
@@ -278,39 +357,6 @@ int orte_ess_base_orted_setup(char **hosts)
         goto error;
     }
     
-    /* datastore - ensure we don't pickup the pmi component, but
-     * don't override anything set by user
-     */
-    if (NULL == getenv("OMPI_MCA_dstore")) {
-        putenv("OMPI_MCA_dstore=^pmi");
-    }
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&opal_dstore_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "opal_dstore_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = opal_dstore_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "opal_dstore_base_select";
-        goto error;
-    }
-    /* create the handles */
-    if (0 > (opal_dstore_peer = opal_dstore.open("PEER"))) {
-        error = "opal dstore global";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-    if (0 > (opal_dstore_internal = opal_dstore.open("INTERNAL"))) {
-        error = "opal dstore internal";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-    if (0 > (opal_dstore_nonpeer = opal_dstore.open("NONPEER"))) {
-        error = "opal dstore nonpeer";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-
     /*
      * Group communications
      */
@@ -356,12 +402,6 @@ int orte_ess_base_orted_setup(char **hosts)
         goto error;
     }
     
-    /* initialize the nidmaps */
-    if (ORTE_SUCCESS != (ret = orte_util_nidmap_init(NULL))) {
-        ORTE_ERROR_LOG(ret);
-        error = "orte_util_nidmap_init";
-        goto error;
-    }
 #if ORTE_ENABLE_STATIC_PORTS
     /* if we are using static ports, then we need to setup
      * the daemon info so the RML can function properly
@@ -403,84 +443,6 @@ int orte_ess_base_orted_setup(char **hosts)
             ORTE_ERROR_LOG(ret);
             error = "orte_plm_init";
             goto error;
-        }
-    }
-    
-    /* setup my session directory */
-    if (orte_create_session_dirs) {
-        OPAL_OUTPUT_VERBOSE((2, orte_ess_base_framework.framework_output,
-                             "%s setting up session dir with\n\ttmpdir: %s\n\thost %s",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             (NULL == orte_process_info.tmpdir_base) ? "UNDEF" : orte_process_info.tmpdir_base,
-                             orte_process_info.nodename));
-        
-        /* take a pass thru the session directory code to fillin the
-         * tmpdir names - don't create anything yet
-         */
-        if (ORTE_SUCCESS != (ret = orte_session_dir(false,
-                                                    orte_process_info.tmpdir_base,
-                                                    orte_process_info.nodename, NULL,
-                                                    ORTE_PROC_MY_NAME))) {
-            ORTE_ERROR_LOG(ret);
-            error = "orte_session_dir define";
-            goto error;
-        }
-        /* clear the session directory just in case there are
-         * stale directories laying around
-         */
-        orte_session_dir_cleanup(ORTE_JOBID_WILDCARD);
-
-        /* now actually create the directory tree */
-        if (ORTE_SUCCESS != (ret = orte_session_dir(true,
-                                                    orte_process_info.tmpdir_base,
-                                                    orte_process_info.nodename, NULL,
-                                                    ORTE_PROC_MY_NAME))) {
-            ORTE_ERROR_LOG(ret);
-            error = "orte_session_dir";
-            goto error;
-        }
-        /* Once the session directory location has been established, set
-           the opal_output env file location to be in the
-           proc-specific session directory. */
-        opal_output_set_output_file_info(orte_process_info.proc_session_dir,
-                                         "output-", NULL, NULL);
-        
-        /* setup stdout/stderr */
-        if (orte_debug_daemons_file_flag) {
-            /* if we are debugging to a file, then send stdout/stderr to
-             * the orted log file
-             */
-            
-            /* get my jobid */
-            if (ORTE_SUCCESS != (ret = orte_util_convert_jobid_to_string(&jobidstring,
-                                                                         ORTE_PROC_MY_NAME->jobid))) {
-                ORTE_ERROR_LOG(ret);
-                error = "convert_jobid";
-                goto error;
-            }
-            
-            /* define a log file name in the session directory */
-            snprintf(log_file, PATH_MAX, "output-orted-%s-%s.log",
-                     jobidstring, orte_process_info.nodename);
-            log_path = opal_os_path(false,
-                                    orte_process_info.tmpdir_base,
-                                    orte_process_info.top_session_dir,
-                                    log_file,
-                                    NULL);
-            
-            fd = open(log_path, O_RDWR|O_CREAT|O_TRUNC, 0640);
-            if (fd < 0) {
-                /* couldn't open the file for some reason, so
-                 * just connect everything to /dev/null
-                 */
-                fd = open("/dev/null", O_RDWR|O_CREAT|O_TRUNC, 0666);
-            } else {
-                dup2(fd, STDOUT_FILENO);
-                dup2(fd, STDERR_FILENO);
-                if(fd != STDOUT_FILENO && fd != STDERR_FILENO) {
-                    close(fd);
-                }
-            }
         }
     }
     
@@ -565,6 +527,13 @@ int orte_ess_base_orted_setup(char **hosts)
     /* obviously, we have "reported" */
     jdata->num_reported = 1;
     
+    /* setup the PMIx server */
+    if (ORTE_SUCCESS != (ret = pmix_server_init())) {
+        ORTE_ERROR_LOG(ret);
+        error = "pmix server init";
+        goto error;
+    }
+
     /* setup the routed info - the selected routed component
      * will know what to do. 
      */
@@ -678,6 +647,9 @@ int orte_ess_base_orted_finalize(void)
         unlink(log_path);
     }
     
+    /* shutdown the pmix server */
+    pmix_server_finalize();
+
     /* close frameworks */
     (void) mca_base_framework_close(&orte_filem_base_framework);
     (void) mca_base_framework_close(&orte_grpcomm_base_framework);

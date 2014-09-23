@@ -183,6 +183,9 @@ Compiler Notes
   source directory path names that was resolved in 9.0-4 (9.0-3 is
   known to be broken in this regard).
 
+- IBM's xlf compilers: NO known good version that can build/link 
+  the MPI f08 bindings or build/link the OSHMEM Fortran bindings.
+
 - On NetBSD-6 (at least AMD64 and i386), and possibly on OpenBSD,
   libtool misidentifies properties of f95/g95, leading to obscure
   compile-time failures if used to build Open MPI.  You can work
@@ -359,7 +362,11 @@ Compiler Notes
 
   The following notes apply to the above-listed Fortran bindings:
 
-  - All Fortran compilers support the mpif.h/shmem.fh-based bindings.
+  - All Fortran compilers support the mpif.h/shmem.fh-based bindings,
+    with one exception: the MPI_SIZEOF interfaces will only be present
+    when Open MPI is built with a Fortran compiler that support the
+    INTERFACE keyword and ISO_FORTRAN_ENV.  Most notably, this
+    excludes the GNU Fortran compiler suite before version 4.9.
 
   - The level of support provided by the mpi module is based on your
     Fortran compiler.
@@ -380,6 +387,9 @@ Compiler Notes
     parameter type checking at run-time (e.g., MPI_INIT,
     MPI_COMM_RANK, etc.).
 
+    Similar to the mpif.h interface, MPI_SIZEOF is only supported on
+    Fortran compilers that support INTERFACE and ISO_FORTRAN_ENV.
+
   - The mpi_f08 module is new and has been tested with the Intel
     Fortran compiler and gfortran >= 4.9.  Other modern Fortran
     compilers may also work (but are, as yet, only lightly tested).
@@ -388,6 +398,12 @@ Compiler Notes
     Many older Fortran compilers do not provide enough modern Fortran
     features to support the mpi_f08 module.  For example, gfortran <
     v4.9 does provide enough support for the mpi_f08 module.
+
+  You can examine the output of the following command to see all
+  the Fortran features that are/are not enabled in your Open MPI
+  installation:
+
+  shell$ ompi_info | grep -i fort
 
 
 General Run-Time Support Notes
@@ -1256,7 +1272,9 @@ OSHMEM FUNCTIONALITY
   enabled).
 
 --disable-oshmem-fortran
-  Disable building only the Fortran OSHMEM bindings.
+  Disable building only the Fortran OSHMEM bindings. Please see 
+  the "Compiler Notes" section herein which contains further 
+  details on known issues with various Fortran compilers.
 
 MISCELLANEOUS FUNCTIONALITY
 

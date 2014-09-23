@@ -13,7 +13,7 @@
  * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved. 
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.
  *                         All rights reserved
- * Copyright (c) 2013      Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -45,7 +45,6 @@
 
 static bool passed_thru = false;
 static int orte_progress_thread_debug_level = -1;
-static char *orte_timing_file = NULL;
 static char *orte_xml_file = NULL;
 static char *orte_fork_agent_string = NULL;
 static char *orte_tmpdir_base = NULL;
@@ -64,7 +63,7 @@ int orte_register_params(void)
         return ORTE_SUCCESS;
     }
     passed_thru = true;
-    
+
     /* get a clean output channel too - need to do this here because
      * we use it below, and orterun and some other tools call this
      * function prior to calling orte_init
@@ -117,15 +116,15 @@ int orte_register_params(void)
      */
     if (NULL != orte_tmpdir_base &&
         (NULL != orte_local_tmpdir_base || NULL != orte_remote_tmpdir_base)) {
-            opal_output(orte_clean_output,
-                        "------------------------------------------------------------------\n"
-                        "The MCA param orte_tmpdir_base was specified, which sets the base\n"
-                        "of the temporary directory tree for all procs. However, values for\n"
-                        "the local and/or remote tmpdir base were also given. This can lead\n"
-                        "to confusion and is therefore not allowed. Please specify either a\n"
-                        "global tmpdir base OR a local/remote tmpdir base value\n"
-                        "------------------------------------------------------------------");
-            exit(1);
+        opal_output(orte_clean_output,
+                    "------------------------------------------------------------------\n"
+                    "The MCA param orte_tmpdir_base was specified, which sets the base\n"
+                    "of the temporary directory tree for all procs. However, values for\n"
+                    "the local and/or remote tmpdir base were also given. This can lead\n"
+                    "to confusion and is therefore not allowed. Please specify either a\n"
+                    "global tmpdir base OR a local/remote tmpdir base value\n"
+                    "------------------------------------------------------------------");
+        exit(1);
     }
      
     if (NULL != orte_tmpdir_base) {
@@ -321,47 +320,6 @@ int orte_register_params(void)
                                   OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
                                   &orte_startup_timeout);
  
-    /* check for timing requests */
-    orte_timing_details = false;
-    (void) mca_base_var_register ("orte", "orte", NULL, "timing_details",
-                                  "Request that detailed timing data by reported",
-                                  MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
-                                  OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
-                                  &orte_timing_details);
-
-    /* ensure the timing flag is set too */
-    orte_timing = orte_timing_details;
-
-    (void) mca_base_var_register ("orte", "orte", NULL, "timing",
-                                  "Request that critical timing loops be measured",
-                                  MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
-                                  OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
-                                  &orte_timing);
-
-    
-    if (ORTE_PROC_IS_HNP) {
-        orte_timing_file = NULL;
-        (void) mca_base_var_register ("orte", "orte", NULL, "timing_file",
-                                      "Name of the file where timing data is to be written (relative or absolute path)",
-                                      MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                      OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
-                                      &orte_timing_file);
-        if (orte_timing && NULL == orte_timing_file) {
-            /* send the timing output to stdout */
-            orte_timing_output = stdout;
-        } else if (NULL != orte_timing_file) {
-            /* make sure the timing flag is set */
-            orte_timing = true;
-            /* send the output to the indicated file */
-            orte_timing_output = fopen(orte_timing_file,  "w");
-            if (NULL == orte_timing_output) {
-                /* couldn't be opened */
-                opal_output(0, "File %s could not be opened", orte_timing_file);
-                orte_timing_output = stderr;
-            }
-        }        
-    }
-    
     /* User-level debugger info string */
     orte_base_user_debugger = "totalview @mpirun@ -a @mpirun_args@ : ddt -n @np@ -start @executable@ @executable_argv@ @single_app@ : fxp @mpirun@ -a @mpirun_args@";
     (void) mca_base_var_register ("orte", "orte", NULL, "base_user_debugger",
@@ -534,17 +492,17 @@ int orte_register_params(void)
                                   OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
                                   &orte_fork_agent_string);
 
-   if (NULL != orte_fork_agent_string) {
+    if (NULL != orte_fork_agent_string) {
         orte_fork_agent = opal_argv_split(orte_fork_agent_string, ' ');
     }
 
     /* whether or not to require RM allocation */
-   orte_allocation_required = false;
-   (void) mca_base_var_register ("orte", "orte", NULL, "allocation_required",
-                                 "Whether or not an allocation by a resource manager is required [default: no]",
-                                 MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
-                                 OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
-                                 &orte_allocation_required);
+    orte_allocation_required = false;
+    (void) mca_base_var_register ("orte", "orte", NULL, "allocation_required",
+                                  "Whether or not an allocation by a resource manager is required [default: no]",
+                                  MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                  OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
+                                  &orte_allocation_required);
 
     /* whether or not to map stddiag to stderr */
     orte_map_stddiag_to_stderr = false;
@@ -554,13 +512,13 @@ int orte_register_params(void)
                                   OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
                                   &orte_map_stddiag_to_stderr);
 
-   /* generate new terminal windows to display output from specified ranks */
-   orte_xterm = NULL;
-   (void) mca_base_var_register ("orte", "orte", NULL, "xterm",
-                                 "Create a new xterm window and display output from the specified ranks there [default: none]",
-                                 MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                 OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
-                                 &orte_xterm);
+    /* generate new terminal windows to display output from specified ranks */
+    orte_xterm = NULL;
+    (void) mca_base_var_register ("orte", "orte", NULL, "xterm",
+                                  "Create a new xterm window and display output from the specified ranks there [default: none]",
+                                  MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                  OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
+                                  &orte_xterm);
     if (NULL != orte_xterm) {
         /* if an xterm request is given, we have to leave any ssh
          * sessions attached so the xterm window manager can get
@@ -774,6 +732,16 @@ int orte_register_params(void)
                                   OPAL_INFO_LVL_5, MCA_BASE_VAR_SCOPE_READONLY,
                                   &orte_daemon_cores);
 
+    /* cutoff for full modex */
+    orte_full_modex_cutoff = UINT32_MAX;
+    id = mca_base_var_register ("orte", "orte", NULL, "full_modex_cutoff",
+                                "If the number of processes in the application exceeds the provided value,"
+                                "modex will be done upon demand [default: UINT32_MAX]",
+                                MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL, 0, 0,
+                                OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_READONLY,
+                                &orte_full_modex_cutoff);
+    /* register a synonym for old name */
+    mca_base_var_register_synonym (id, "ompi", "hostname", "cutoff", NULL, MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     return ORTE_SUCCESS;
 }

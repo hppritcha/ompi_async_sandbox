@@ -80,6 +80,9 @@ static int send_bytes(mca_oob_tcp_peer_t* peer)
     mca_oob_tcp_send_t* msg = peer->send_msg;
     int rc;
 
+    OPAL_TIMING_EVENT((&tm_oob, "to %s %d bytes",
+                       ORTE_NAME_PRINT(&(peer->name)), msg->sdbytes));
+
     while (0 < msg->sdbytes) {
         rc = write(peer->sd, msg->sdptr, msg->sdbytes);
         if (rc < 0) {
@@ -313,6 +316,9 @@ void mca_oob_tcp_send_handler(int sd, short flags, void *cbdata)
 static int read_bytes(mca_oob_tcp_peer_t* peer)
 {
     int rc;
+#if OPAL_ENABLE_TIMING
+    int to_read = peer->recv_msg->rdbytes;
+#endif
 
     /* read until all bytes recvd or error */
     while (0 < peer->recv_msg->rdbytes) {
@@ -384,6 +390,9 @@ static int read_bytes(mca_oob_tcp_peer_t* peer)
         peer->recv_msg->rdptr += rc;
     }
 
+    OPAL_TIMING_EVENT((&tm_oob, "from %s %d bytes",
+                       ORTE_NAME_PRINT(&(peer->name)), to_read));
+
     /* we read the full data block */
     return ORTE_SUCCESS;
 }
@@ -397,9 +406,10 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
 {
     mca_oob_tcp_peer_t* peer = (mca_oob_tcp_peer_t*)cbdata;
     int rc;
-    orte_process_name_t hop;
-    mca_oob_tcp_peer_t *relay;
-    uint64_t ui64;
+    orte_rml_send_t *snd;
+#if OPAL_ENABLE_TIMING
+    bool timing_same_as_hdr = false;
+#endif
 
     if (orte_abnormal_term_ordered) {
         return;
@@ -435,7 +445,10 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
             }
             /* update our state */
             peer->state = MCA_OOB_TCP_CONNECTED;
-        } else {
+        } else if (ORTE_ERR_UNREACH != rc) {
+            /* we get an unreachable error returned if a connection
+             * completes but is rejected - otherwise, we don't want
+             * to terminate as we might be retrying the connection */
             opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
                                 "%s UNABLE TO COMPLETE CONNECT ACK WITH %s",
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -470,7 +483,15 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
             opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
                                 "%s:tcp:recv:handler read hdr",
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+#if OPAL_ENABLE_TIMING
+            int to_recv = peer->recv_msg->rdbytes;
+#endif
             if (ORTE_SUCCESS == (rc = read_bytes(peer))) {
+#if OPAL_ENABLE_TIMING
+                timing_same_as_hdr = true;
+#endif
+                OPAL_TIMING_EVENT((&tm_oob, "from %s %d bytes [header]",
+                                   ORTE_NAME_PRINT(&(peer->name)), to_recv));
                 /* completed reading the header */
                 peer->recv_msg->hdr_recvd = true;
                 /* convert the header */
@@ -522,6 +543,12 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
                                     (int)peer->recv_msg->hdr.nbytes,
                                     ORTE_NAME_PRINT(&peer->recv_msg->hdr.dst),
                                     peer->recv_msg->hdr.tag);
+
+                OPAL_TIMING_EVENT((&tm_oob, "from %s %d bytes [body:%s]",
+                                   ORTE_NAME_PRINT(&(peer->name)),
+                                   (int)peer->recv_msg->hdr.nbytes,
+                                   (timing_same_as_hdr) ? "same" : "next"));
+
                 /* am I the intended recipient (header was already converted back to host order)? */
                 if (peer->recv_msg->hdr.dst.jobid == ORTE_PROC_MY_NAME->jobid &&
                     peer->recv_msg->hdr.dst.vpid == ORTE_PROC_MY_NAME->vpid) {
@@ -534,52 +561,26 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
                                           peer->recv_msg->hdr.nbytes);
                     OBJ_RELEASE(peer->recv_msg);
                 } else {
-                    /* no - find the next hop in the route */
-                    hop = orte_routed.get_route(&peer->recv_msg->hdr.dst);
-                    if (hop.jobid == ORTE_JOBID_INVALID ||
-                        hop.vpid == ORTE_VPID_INVALID) {
-                        /* no hop known - post the error to the component
-                         * and let the OOB see if there is another way
-                         * to get there from here
-                         */
-                        opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
-                                            "%s NO ROUTE TO %s FROM HERE",
-                                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                            ORTE_NAME_PRINT(&peer->name));
-                        /* let the component know about the problem */
-                        ORTE_ACTIVATE_TCP_MSG_ERROR(NULL, peer->recv_msg, &hop, mca_oob_tcp_component_no_route);
-                        /* cleanup */
-                        OBJ_RELEASE(peer->recv_msg);
-                        return;
-                    } else {
-                        /* does we know how to reach the next hop? */
-                        memcpy(&ui64, (char*)&hop, sizeof(uint64_t));
-                        if (OPAL_SUCCESS != opal_hash_table_get_value_uint64(&mca_oob_tcp_module.peers, ui64, (void**)&relay)) {
-                            opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
-                                                "%s ADDRESS OF NEXT HOP %s TO %s IS UNKNOWN",
-                                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                                ORTE_NAME_PRINT(&hop),
-                                                ORTE_NAME_PRINT(&peer->recv_msg->hdr.dst));
-                            /* let the component know about the problem */
-                            ORTE_ACTIVATE_TCP_MSG_ERROR(NULL, peer->recv_msg, &hop, mca_oob_tcp_component_hop_unknown);
-                            /* cleanup */
-                            OBJ_RELEASE(peer->recv_msg);
-                            return;
-                        }
-                        opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
-                                            "%s ROUTING TO %s FROM HERE",
-                                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                            ORTE_NAME_PRINT(&relay->name));
-                        /* if this came from a different job family, then ensure
-                         * we know how to return
-                         */
-                        if (ORTE_JOB_FAMILY(peer->recv_msg->hdr.origin.jobid) != ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid)) {
-                            orte_routed.update_route(&(peer->recv_msg->hdr.origin), &peer->name);
-                        }
-                        /* post the message for retransmission */
-                        MCA_OOB_TCP_QUEUE_RELAY(peer->recv_msg, relay);
-                        OBJ_RELEASE(peer->recv_msg);
-                    }
+                    /* promote this to the OOB as some other transport might
+                     * be the next best hop */
+                    opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
+                                        "%s TCP PROMOTING ROUTED MESSAGE FOR %s TO OOB",
+                                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                        ORTE_NAME_PRINT(&peer->recv_msg->hdr.dst));
+                    snd = OBJ_NEW(orte_rml_send_t);
+                    snd->dst = peer->recv_msg->hdr.dst;
+                    snd->origin = peer->recv_msg->hdr.origin;
+                    snd->tag = peer->recv_msg->hdr.tag;
+                    snd->data = peer->recv_msg->data;
+                    snd->count = peer->recv_msg->hdr.nbytes;
+                    snd->cbfunc.iov = NULL;
+                    snd->cbdata = NULL;
+                    /* activate the OOB send state */
+                    ORTE_OOB_SEND(snd);
+                    /* protect the data */
+                    peer->recv_msg->data = NULL;
+                    /* cleanup */
+                    OBJ_RELEASE(peer->recv_msg);
                 }
                 peer->recv_msg = NULL;
                 return;
