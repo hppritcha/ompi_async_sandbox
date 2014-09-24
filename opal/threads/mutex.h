@@ -31,6 +31,8 @@
 
 BEGIN_C_DECLS
 
+#define OMPI_ENABLE_THREAD_MULTIPLE 1
+
 /**
  * @file:
  *
