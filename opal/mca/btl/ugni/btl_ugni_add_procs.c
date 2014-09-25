@@ -150,7 +150,7 @@ int mca_btl_ugni_add_procs(struct mca_btl_base_module_t* btl,
             rc = GNI_EpCreate (ugni_module->device->dev_handle, ugni_module->rdma_local_cq,
                                &ugni_module->local_ep);
             OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
-            if (OPAL_UNLIKELY(OMPI_SUCCESS != rc)) {
+            if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc)) {
                 BTL_ERROR(("error creating local ugni endpoint"));
                 return opal_common_rc_ugni_to_opal (rc);
             }
@@ -160,7 +160,7 @@ int mca_btl_ugni_add_procs(struct mca_btl_base_module_t* btl,
                              ugni_module->device->dev_addr,
                              getpid());
             OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
-            if (OPAL_UNLIKELY(OMPI_SUCCESS != rc)) {
+            if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc)) {
                 BTL_ERROR(("error binding local ugni endpoint"));
                 return opal_common_rc_ugni_to_opal (rc);
             }

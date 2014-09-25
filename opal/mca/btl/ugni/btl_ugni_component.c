@@ -473,7 +473,7 @@ mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module, int which_cq)
             /* give up */
             BTL_ERROR(("giving up on frag %p type %d CQE error %s", (void *) frag, frag->post_desc.base.type, buffer));
             if (frag->cbfunc) {
-                frag->cbfunc (frag, OMPI_ERROR);
+                frag->cbfunc (frag, OPAL_ERROR);
             }
 
             return OPAL_ERROR;
