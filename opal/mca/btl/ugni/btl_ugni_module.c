@@ -18,6 +18,8 @@
 #include "btl_ugni_prepare.h"
 #include "btl_ugni_smsg.h"
 
+int howards_progress_var = 0;
+
 static int
 mca_btl_ugni_free (struct mca_btl_base_module_t *btl,
                    mca_btl_base_descriptor_t *des);
@@ -74,12 +76,14 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
     ugni_module->active_send_count = 0;
 
     OBJ_CONSTRUCT(&ugni_module->failed_frags, opal_list_t);
+    OBJ_CONSTRUCT(&ugni_module->failed_frags_lock,opal_mutex_t);
     OBJ_CONSTRUCT(&ugni_module->eager_frags_send, ompi_free_list_t);
     OBJ_CONSTRUCT(&ugni_module->eager_frags_recv, ompi_free_list_t);
     OBJ_CONSTRUCT(&ugni_module->smsg_frags, ompi_free_list_t);
     OBJ_CONSTRUCT(&ugni_module->rdma_frags, ompi_free_list_t);
     OBJ_CONSTRUCT(&ugni_module->rdma_int_frags, ompi_free_list_t);
     OBJ_CONSTRUCT(&ugni_module->pending_smsg_frags_bb, opal_pointer_array_t);
+    OBJ_CONSTRUCT(&ugni_module->ep_wait_list_lock,opal_mutex_t);
     OBJ_CONSTRUCT(&ugni_module->ep_wait_list, opal_list_t);
     OBJ_CONSTRUCT(&ugni_module->endpoints, opal_pointer_array_t);
     OBJ_CONSTRUCT(&ugni_module->id_to_endpoint, opal_hash_table_t);
@@ -90,8 +94,10 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
 
     /* create wildcard endpoint to listen for connections.
      * there is no need to bind this endpoint. */
+    OPAL_THREAD_LOCK(&dev->dev_lock);
     rc = GNI_EpCreate (ugni_module->device->dev_handle, NULL,
                        &ugni_module->wildcard_ep);
+    OPAL_THREAD_UNLOCK(&dev->dev_lock);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         BTL_ERROR(("error creating wildcard ugni endpoint"));
         return opal_common_rc_ugni_to_opal (rc);
@@ -102,6 +108,11 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         BTL_ERROR(("error posting wildcard datagram"));
         return rc;
+    }
+
+    if (getenv("HOWARDS_PROGESS") != NULL) {
+        howards_progress_var = 1;
+        fprintf(stderr,"setting howards_progress_var to 1\n");
     }
 
     return OPAL_SUCCESS;
@@ -135,7 +146,12 @@ mca_btl_ugni_module_finalize (struct mca_btl_base_module_t *btl)
             rc = opal_hash_table_get_next_key_uint64 (&ugni_module->id_to_endpoint, &key, (void **) &ep, node, &node);
         }
 
+        if (howards_progress_var) {
+            mca_btl_ugni_kill_progress_thread();
+        }
+
         /* destroy all cqs */
+        OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);
         rc = GNI_CqDestroy (ugni_module->rdma_local_cq);
         if (GNI_RC_SUCCESS != rc) {
             BTL_ERROR(("error tearing down local BTE/FMA CQ"));
@@ -151,6 +167,20 @@ mca_btl_ugni_module_finalize (struct mca_btl_base_module_t *btl)
             BTL_ERROR(("error tearing down remote SMSG CQ"));
         }
 
+        if (howards_progress_var == 1) {
+            rc = GNI_CqDestroy (ugni_module->rdma_local_irq_cq);
+            if (GNI_RC_SUCCESS != rc) {
+                fprintf(stderr,"error tearing down rdma_local_irq_cq\n");
+                BTL_ERROR(("error tearing down local BTE/FMA CQ"));
+            }
+
+            rc = GNI_CqDestroy (ugni_module->smsg_remote_irq_cq);
+            if (GNI_RC_SUCCESS != rc) {
+                fprintf(stderr,"error tearing down smsg_remote_irq_cq\n");
+                BTL_ERROR(("error tearing down remote SMSG CQ"));
+            }
+        }
+
         /* cancel wildcard post */
         rc = GNI_EpPostDataCancelById (ugni_module->wildcard_ep,
                                        MCA_BTL_UGNI_CONNECT_WILDCARD_ID |
@@ -164,6 +194,7 @@ mca_btl_ugni_module_finalize (struct mca_btl_base_module_t *btl)
         if (GNI_RC_SUCCESS != rc) {
             BTL_VERBOSE(("btl/ugni error destroying endpoint"));
         }
+        OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
     }
 
     OBJ_DESTRUCT(&ugni_module->eager_frags_send);

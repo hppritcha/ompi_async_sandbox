@@ -136,6 +136,8 @@ static int opal_common_ugni_device_init (opal_common_ugni_device_t *device,
 
     OPAL_OUTPUT((-1, "Got NIC Addr: 0x%08x, CPU ID: %d", device->dev_addr, device->dev_id));
 
+    OBJ_CONSTRUCT(&device->dev_lock,opal_mutex_t);
+
     /* Attach device to the communication domain */
     rc = GNI_CdmAttach (opal_common_ugni_module.cd_handle, device->dev_id,
                         &device->dev_pe_addr, &device->dev_handle);
@@ -268,7 +270,8 @@ int opal_common_ugni_init (void)
 
     /* Create a communication domain */
     modes = GNI_CDM_MODE_FORK_FULLCOPY | GNI_CDM_MODE_CACHED_AMO_ENABLED |
-            GNI_CDM_MODE_ERR_NO_KILL | GNI_CDM_MODE_FAST_DATAGRAM_POLL;
+            GNI_CDM_MODE_ERR_NO_KILL | GNI_CDM_MODE_FAST_DATAGRAM_POLL | GNI_CDM_MODE_BTE_SINGLE_CHANNEL |
+            GNI_CDM_MODE_FLBTE_DISABLE;
 
     /* collect uGNI information */
     rc = get_ptag(&opal_common_ugni_module.ptag);

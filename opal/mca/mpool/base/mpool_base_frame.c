@@ -20,13 +20,13 @@
  * $HEADER$
  */
 
-#include "opal_config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h> 
 #endif  /* HAVE_UNISTD_H */
+
+#include "opal_config.h"
 
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"

@@ -63,7 +63,9 @@ static void mca_btl_ugni_callback_rdma_complete (mca_btl_ugni_base_frag_t *frag,
     if (OPAL_UNLIKELY(0 > rc)) {
         /* call this callback again later */
         frag->cbfunc = mca_btl_ugni_callback_rdma_complete;
+        OPAL_THREAD_LOCK(&frag->endpoint->btl->failed_frags_lock);
         opal_list_append (&frag->endpoint->btl->failed_frags, (opal_list_item_t *) frag);
+        OPAL_THREAD_UNLOCK(&frag->endpoint->btl->failed_frags_lock);
     }
 }
 
@@ -154,7 +156,9 @@ int mca_btl_ugni_start_eager_get (mca_btl_base_endpoint_t *ep,
     } while (0);
 
     frag->cbfunc = mca_btl_ugni_callback_eager_get_retry;
+    OPAL_THREAD_LOCK(&ep->btl->failed_frags_lock);
     opal_list_append (&ep->btl->failed_frags, (opal_list_item_t *) frag);
+    OPAL_THREAD_UNLOCK(&ep->btl->failed_frags_lock);
 
     return rc;
 }
