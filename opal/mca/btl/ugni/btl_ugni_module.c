@@ -110,9 +110,8 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
         return rc;
     }
 
-    if (getenv("HOWARDS_PROGESS") != NULL) {
+    if ((getenv("HOWARDS_PROGESS") != NULL) && opal_using_threads()) {
         howards_progress_var = 1;
-        fprintf(stderr,"setting howards_progress_var to 1\n");
     }
 
     return OPAL_SUCCESS;

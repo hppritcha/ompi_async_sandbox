@@ -521,6 +521,14 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
 
     ompi_mpi_thread_level(requested, provided);
 
+    /* If thread support was enabled, then setup OPAL to allow for
+       them. */
+    if ((OPAL_ENABLE_PROGRESS_THREADS == 1) ||
+        (*provided != MPI_THREAD_SINGLE)) {
+        opal_set_using_threads(true);
+    }
+
+
     /* determine the bitflag belonging to the threadlevel_support provided */
     memset ( &threadlevel_bf, 0, sizeof(uint8_t));
     OMPI_THREADLEVEL_SET_BITFLAG ( ompi_mpi_thread_provided, threadlevel_bf );
@@ -745,13 +753,6 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
     if (OMPI_SUCCESS != (ret = ompi_proc_complete_init())) {
         error = "ompi_proc_complete_init failed";
         goto error;
-    }
-
-    /* If thread support was enabled, then setup OPAL to allow for
-       them. */
-    if ((OPAL_ENABLE_PROGRESS_THREADS == 1) ||
-        (*provided != MPI_THREAD_SINGLE)) {
-        opal_set_using_threads(true);
     }
 
     /* start PML/BTL's */
