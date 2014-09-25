@@ -139,22 +139,28 @@ mca_btl_ugni_sendi (struct mca_btl_base_module_t *btl,
 
 int mca_btl_ugni_progress_send_wait_list (mca_btl_base_endpoint_t *endpoint)
 {
-    mca_btl_ugni_base_frag_t *frag;
+    mca_btl_ugni_base_frag_t *frag=NULL;
     int rc;
 
-    while (NULL !=
-           (frag = (mca_btl_ugni_base_frag_t *) opal_list_remove_first (&endpoint->frag_wait_list))) {
+    do {
+        OPAL_THREAD_LOCK(&endpoint->lock);
+        frag = (mca_btl_ugni_base_frag_t *) opal_list_remove_first (&endpoint->frag_wait_list);
+        OPAL_THREAD_UNLOCK(&endpoint->lock);
+        if (NULL == frag) {
+            break;
+        }
         rc = mca_btl_ugni_send_frag (endpoint, frag);
         if (OPAL_UNLIKELY(OPAL_SUCCESS > rc)) {
             if (OPAL_LIKELY(OPAL_ERR_OUT_OF_RESOURCE == rc)) {
+                OPAL_THREAD_LOCK(&endpoint->lock);
                 opal_list_prepend (&endpoint->frag_wait_list, (opal_list_item_t *) frag);
+                OPAL_THREAD_UNLOCK(&endpoint->lock);
             } else {
                 mca_btl_ugni_frag_complete (frag, rc);
             }
-
             return rc;
         }
-    }
+    } while(1);
 
     return OPAL_SUCCESS;
 }

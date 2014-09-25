@@ -64,7 +64,7 @@ btl_ugni_component_register(void)
                                            NULL, 0, MCA_BASE_VAR_FLAG_SETTABLE,
                                            OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_LOCAL,
                                            &mca_btl_ugni_component.ugni_free_list_num);
-    mca_btl_ugni_component.ugni_free_list_max = 16384;
+    mca_btl_ugni_component.ugni_free_list_max = 4096;
     (void) mca_base_component_var_register(&mca_btl_ugni_component.super.btl_version,
                                            "free_list_max", NULL, MCA_BASE_VAR_TYPE_INT,
                                            NULL, 0, MCA_BASE_VAR_FLAG_SETTABLE,
@@ -286,15 +286,6 @@ mca_btl_ugni_component_init (int *num_btl_modules,
     unsigned int i;
     int rc;
 
-#if 0
-    /* Currently refuse to run if MPI_THREAD_MULTIPLE is enabled */
-    if (opal_using_threads() && !mca_btl_base_thread_multiple_override) {
-        opal_output_verbose(5, opal_btl_base_framework.framework_output,
-                            "btl:ugni: MPI_THREAD_MULTIPLE not supported; skipping this component");
-        return NULL;
-    }
-#endif
-
     if (16384 < mca_btl_ugni_component.ugni_smsg_limit) {
         mca_btl_ugni_component.ugni_smsg_limit = 16384;
     }
@@ -436,31 +427,33 @@ mca_btl_ugni_progress_datagram (mca_btl_ugni_module_t *ugni_module)
 }
 
 static inline int
-mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module)
+mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module, int which_cq)
 {
     opal_common_ugni_post_desc_t *desc;
     mca_btl_ugni_base_frag_t *frag;
     gni_cq_entry_t event_data = 0;
     uint32_t recoverable = 1;
     gni_return_t rc;
+    gni_cq_handle_t the_cq;
+
+    the_cq = (which_cq == 0) ? ugni_module->rdma_local_cq : ugni_module->rdma_local_irq_cq;
 
     OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);
-    rc = GNI_CqGetEvent (ugni_module->rdma_local_cq, &event_data);
-    OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
+    rc = GNI_CqGetEvent (the_cq, &event_data);
     if (GNI_RC_NOT_DONE == rc) {
+        OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
         return 0;
     }
 
     if (OPAL_UNLIKELY((GNI_RC_SUCCESS != rc && !event_data) || GNI_CQ_OVERRUN(event_data))) {
         /* TODO -- need to handle overrun -- how do we do this without an event?
            will the event eventually come back? Ask Cray */
-        BTL_ERROR(("unhandled post error! ugni rc = %d", rc));
-        assert (0);
+        BTL_ERROR(("unhandled post error! ugni rc = %d %s", rc,gni_err_str[rc]));
+        OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
         return opal_common_rc_ugni_to_opal (rc);
     }
 
-    OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);
-    rc = GNI_GetCompleted (ugni_module->rdma_local_cq, event_data, (gni_post_descriptor_t **) &desc);
+    rc = GNI_GetCompleted (the_cq, event_data, (gni_post_descriptor_t **) &desc);
     OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
     if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc && GNI_RC_TRANSACTION_ERROR != rc)) {
         BTL_ERROR(("Error in GNI_GetComplete %s", gni_err_str[rc]));
@@ -470,13 +463,18 @@ mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module)
     frag = MCA_BTL_UGNI_DESC_TO_FRAG(desc);
 
     if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc || !GNI_CQ_STATUS_OK(event_data))) {
+        char buffer[1024];
+
         (void) GNI_CqErrorRecoverable (event_data, &recoverable);
+        GNI_CqErrorStr(event_data,buffer,sizeof(buffer));
 
         if (OPAL_UNLIKELY(++frag->post_desc.tries >= mca_btl_ugni_component.rdma_max_retries ||
                           !recoverable)) {
             /* give up */
-            BTL_ERROR(("giving up on frag %p", (void *) frag));
-            frag->cbfunc (frag, OPAL_ERROR);
+            BTL_ERROR(("giving up on frag %p type %d CQE error %s", (void *) frag, frag->post_desc.base.type, buffer));
+            if (frag->cbfunc) {
+                frag->cbfunc (frag, OMPI_ERROR);
+            }
 
             return OPAL_ERROR;
         }
@@ -489,7 +487,9 @@ mca_btl_ugni_progress_rdma (mca_btl_ugni_module_t *ugni_module)
 
     BTL_VERBOSE(("RDMA/FMA complete for frag %p", (void *) frag));
 
-    frag->cbfunc (frag, opal_common_rc_ugni_to_opal (rc));
+    if (frag->cbfunc) {
+        frag->cbfunc (frag, opal_common_rc_ugni_to_opal (rc));
+    }
 
     return 1;
 }
@@ -507,7 +507,9 @@ mca_btl_ugni_retry_failed (mca_btl_ugni_module_t *ugni_module)
         OPAL_THREAD_UNLOCK(&ugni_module->failed_frags_lock);
         assert (NULL != frag);
 
-        frag->cbfunc (frag, OPAL_SUCCESS);
+        if (frag->cbfunc) {
+            frag->cbfunc (frag, OPAL_SUCCESS);
+        }
     }
 
     return count;
@@ -517,8 +519,12 @@ static inline int
 mca_btl_ugni_progress_wait_list (mca_btl_ugni_module_t *ugni_module)
 {
     int rc = OPAL_SUCCESS;
-    int i;
     mca_btl_base_endpoint_t *endpoint = NULL;
+    int count;
+
+    OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
+    count  = opal_list_get_size(&ugni_module->ep_wait_list);
+    OPAL_THREAD_UNLOCK(&ugni_module->ep_wait_list_lock);
 
     do {
         OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
@@ -532,14 +538,17 @@ mca_btl_ugni_progress_wait_list (mca_btl_ugni_module_t *ugni_module)
 
             if (OPAL_SUCCESS != rc && false == endpoint->wait_listed) {
 
+                endpoint->wait_listed = true;
                 OPAL_THREAD_LOCK(&ugni_module->ep_wait_list_lock);
                 opal_list_append (&ugni_module->ep_wait_list, &endpoint->super);
                 OPAL_THREAD_UNLOCK(&ugni_module->ep_wait_list_lock);
-                endpoint->wait_listed = true;
             }
         }
 
-    } while (endpoint != NULL);
+        --count;
+        if (count == 0) break;
+
+    } while (endpoint != NULL) ;
 
     return rc;
 }
@@ -559,7 +568,12 @@ static int mca_btl_ugni_component_progress (void)
         count += mca_btl_ugni_progress_datagram (ugni_module);
         count += mca_btl_ugni_progress_local_smsg (ugni_module);
         count += mca_btl_ugni_progress_remote_smsg (ugni_module);
-        count += mca_btl_ugni_progress_rdma (ugni_module);
+        count += mca_btl_ugni_progress_rdma (ugni_module, 0);
+
+        if (howards_progress_var) {
+            count += mca_btl_ugni_progress_rdma (ugni_module, 1);
+        }
+
     }
 
     return count;

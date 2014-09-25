@@ -157,7 +157,9 @@ static inline int mca_btl_ugni_ep_connect_finish (mca_btl_base_endpoint_t *ep) {
     GNI_EpSetEventData (ep->rdma_ep_handle, ep->index, ep->remote_attr.index);
     GNI_EpSetEventData (ep->smsg_ep_handle, ep->index, ep->remote_attr.index);
 
+    ep->rmt_irq_mem_hndl = ep->remote_attr.rmt_irq_mem_hndl;
     ep->state = MCA_BTL_UGNI_EP_STATE_CONNECTED;
+    fprintf(stderr,"ep->rmt_irq_mem_hndl rmt_irq_mem_hndl 0x%lx 0x%lx\n",ep->rmt_irq_mem_hndl.qword1,ep->rmt_irq_mem_hndl.qword2);
 
     /* send all pending messages */
     BTL_VERBOSE(("endpoint connected. posting %u sends", (unsigned int) opal_list_get_size (&ep->frag_wait_list)));
@@ -177,6 +179,7 @@ static inline int mca_btl_ugni_directed_ep_post (mca_btl_base_endpoint_t *ep) {
     gni_return_t rc;
 
     BTL_VERBOSE(("posting directed datagram to remote id: %d for endpoint %p", ep->common->ep_rem_id, ep));
+    ep->mailbox->attr.rmt_irq_mem_hndl = mca_btl_ugni_component.modules[0].device->smsg_irq_mhndl;
 
     rc = GNI_EpPostDataWId (ep->smsg_ep_handle, &ep->mailbox->attr, sizeof (ep->mailbox->attr),
                             &ep->remote_attr, sizeof (ep->remote_attr),

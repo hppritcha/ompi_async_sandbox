@@ -42,6 +42,7 @@ int opal_common_ugni_endpoint_for_proc (opal_common_ugni_device_t *dev, opal_pro
 
     endpoint->ep_rem_addr = modex->addr;
     endpoint->ep_rem_id   = modex->id;
+    endpoint->ep_rem_irq_memhndl = modex->irq_memhndl;
 
     endpoint->dev = dev;
 
@@ -99,6 +100,7 @@ int opal_common_ugni_ep_destroy  (gni_ep_handle_t *ep)
         return OPAL_SUCCESS;
     }
 
+    /* TODO: need to fix, may be outstanding tx's, etc. */
     rc = GNI_EpUnbind (*ep);
     if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc)) {
         /* should warn */

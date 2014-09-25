@@ -45,11 +45,14 @@
 #define MCA_BTL_UGNI_CONNECT_DIRECTED_ID 0x8000000000000000ull
 #define MCA_BTL_UGNI_DATAGRAM_MASK       0x8000000000000000ull
 
+extern int howards_progress_var;
+
 /* ompi and smsg endpoint attributes */
 typedef struct mca_btl_ugni_endpoint_attr_t {
     uint64_t proc_id;
     uint32_t index;
     gni_smsg_attr_t smsg_attr;
+    gni_mem_handle_t rmt_irq_mem_hndl;
 } mca_btl_ugni_endpoint_attr_t;
 
 enum {
@@ -69,18 +72,22 @@ typedef struct mca_btl_ugni_module_t {
     opal_hash_table_t id_to_endpoint;
 
     /* lock for this list */
-    opal_mutex_t     failed_frags_lock;   
+    opal_mutex_t     failed_frags_lock;
     opal_list_t failed_frags;
 
     mca_mpool_base_module_t *smsg_mpool;
     ompi_free_list_t         smsg_mboxes;
 
     gni_ep_handle_t wildcard_ep;
+    gni_ep_handle_t local_ep;
+
     struct mca_btl_ugni_endpoint_attr_t wc_remote_attr, wc_local_attr;
 
     gni_cq_handle_t rdma_local_cq;
     gni_cq_handle_t smsg_remote_cq;
     gni_cq_handle_t smsg_local_cq;
+    gni_cq_handle_t smsg_remote_irq_cq;
+    gni_cq_handle_t rdma_local_irq_cq;
 
     /* eager fragment list (registered) */
     ompi_free_list_t eager_frags_send;
@@ -298,5 +305,9 @@ static inline uint64_t mca_btl_ugni_proc_name_to_id (opal_process_name_t name) {
     /* Throw away the top bit of the jobid for the datagram type */
     return ((uint64_t) (opal_process_name_jobid(name) & 0x7fffffff) << 32 | opal_process_name_vpid(name));
 }
+
+int mca_btl_ugni_spawn_progress_thread(struct mca_btl_base_module_t* btl);
+int mca_btl_ugni_kill_progress_thread(void);
+
 
 #endif
